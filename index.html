@@ -36,7 +36,7 @@
 
         const CONFIG = {
             user: "tocontactmsg-ai", 
-            repo: "De",      
+            repo: "so",      
             path: "ads",     
             wa: "249998615193",
             domain: "soug.eldelala.com"
@@ -112,7 +112,7 @@
 
                     {/* Navigation */}
                     <nav className="flex justify-center gap-8 mb-8 border-b">
-                        <button onClick={() => setView("feed")} className={`pb-4 px-2 font-bold ${view==='feed'?'nav-active':'text-slate-400'}`}>عرض النواقص</button>
+                        <button onClick={() => setView("feed")} className={`pb-4 px-2 font-bold ${view==='feed'?'nav-active':'text-slate-400'}`}>عرض الطلبات</button>
                         <button onClick={() => setView("post")} className={`pb-4 px-2 font-bold ${view==='post'?'nav-active':'text-slate-400'}`}>إضافة طلب بضاعة</button>
                     </nav>
 
@@ -170,7 +170,7 @@
                                     <p className="text-sm font-bold text-slate-500 mb-3">قائمة النواقص المطلوبة:</p>
                                     {items.map((it, idx) => (
                                         <div key={idx} className="flex gap-2 mb-2">
-                                            <input required placeholder="الصنف (مثلاً: زيت 1 لتر)" className="flex-1 p-2 border rounded-lg text-sm" value={it.name} onChange={e => {
+                                            <input required placeholder="الصنف (مثلاً: كرتونة بسكويت الشريف)" className="flex-1 p-2 border rounded-lg text-sm" value={it.name} onChange={e => {
                                                 const n = [...items]; n[idx].name = e.target.value; setItems(n);
                                             }} />
                                             <input required placeholder="الكمية" className="w-20 p-2 border rounded-lg text-sm text-center font-bold" value={it.qty} onChange={e => {
@@ -181,7 +181,7 @@
                                     ))}
                                     <button type="button" onClick={() => setItems([...items, {name:"", qty:""}])} className="w-full py-2 border-2 border-dashed border-emerald-100 text-emerald-600 rounded-lg text-xs font-bold">+ إضافة صنف جديد</button>
                                 </div>
-                                <button type="submit" className="w-full py-4 btn-primary font-bold text-lg shadow-lg">إرسال الطلب للموردين</button>
+                                <button type="submit" className="w-full py-4 btn-primary font-bold text-lg shadow-lg">إرسال الطلب عبر الواتساب</button>
                             </form>
                         </div>
                     )}
