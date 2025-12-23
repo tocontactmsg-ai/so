@@ -1,13 +1,13 @@
 {
-  "name": "سوق الدلالة",
-  "short_name": "الدلالة",
+  "name": " سوق الدلالة",
+  "short_name": " الدلالة للبضائع",
   "start_url": ".",
   "display": "standalone",
   "background_color": "#ffffff",
   "theme_color": "#059669",
   "icons": [
     {
-      "src": "https://cdn-icons-png.flaticon.com/512/3643/3643948.png",
+      "src": "favicon-3.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any maskable"
