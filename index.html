@@ -61,7 +61,7 @@
                     const files = await response.json();
                     const jsonFiles = files.filter(f => f.name.endsWith('.json'));
                     const data = await Promise.all(jsonFiles.map(async f => (await fetch(f.download_url)).json()));
-                    setTenders(data.sort((a, b) => b.id - a.id));
+                   setTenders(data.sort((a, b) => b.id.toString().localeCompare(a.id.toString(), undefined, {numeric: true})));
                     if (sharedRef) setExpanded({ [sharedRef]: true });
                 } catch (e) { console.error(e); } finally { setLoading(false); }
             }, [sharedRef]);
@@ -85,12 +85,20 @@
                 doc.save(`Order-${order.id}.pdf`);
             };
 
-            const handlePost = (e) => {
-                e.preventDefault();
-                const fd = new FormData(e.target);
+          
+               const handlePost = (e) => { e.preventDefault();
+               const fd = new FormData(e.target);
                 const d = new Date();
-                const refCode = "SUP" + d.getTime().toString().slice(-6);
-                const itemList = items.map((it, i) => `${i+1}. ${it.name} (${it.qty})`).join('\n');
+    
+    // S + السنة + الشهر + اليوم + الساعة + الدقيقة
+             const refCode = "S" + 
+                    d.getFullYear().toString().slice(-2) + 
+                    (d.getMonth() + 1).toString().padStart(2, '0') + 
+                    d.getDate().toString().padStart(2, '0') + 
+                    d.getHours().toString().padStart(2, '0') + 
+                    d.getMinutes().toString().padStart(2, '0');
+    
+    const itemList = items.map((it, i) => `${i+1}. ${it.name} (${it.qty})`).join('\n');
                 
                 const message = `📦 *طلب توريد جديد للمحل*\n*المرجع:* ${refCode}\n*المحل:* ${fd.get("shop")}\n*الموقع:* ${fd.get("loc")}\n*المسؤول:* ${fd.get("user")}\n----------\n*البضاعة المطلوبة:*\n${itemList}`;
                 window.open(`https://wa.me/${CONFIG.wa}?text=${encodeURIComponent(message)}`);
