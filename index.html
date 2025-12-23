@@ -1,1 +1,296 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="description" content="سوق الدلالة - وجهتك الأولى لتسوق المواد الغذائية والتموينات في السودان">
+    <title>سوق الدلالة | Soug Eldelala</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.23/jspdf.plugin.autotable.min.js"></script>
+    
+    <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;700;900&display=swap" rel="stylesheet">
+    
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 
+    <style>
+        body { 
+            font-family: 'Cairo', sans-serif; 
+            background: #fdfdfd;
+            color: #1e293b;
+            min-height: 100vh;
+        }
+        
+        .card-order { 
+            background: white;
+            border-radius: 1.5rem;
+            border: 2px solid #f1f5f9;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.03);
+        }
+        
+        .card-order:hover { 
+            border-color: #059669; /* Emerald Green */
+            transform: translateY(-2px);
+        }
+        
+        .nav-active { 
+            color: #059669;
+            font-weight: 900;
+            border-bottom: 3px solid #059669;
+        }
+        
+        .search-input { 
+            width: 100%; 
+            padding: 1rem 3rem 1rem 1rem;
+            background: white; 
+            border-radius: 1rem; 
+            border: 2px solid #e2e8f0;
+        }
+        
+        .btn-primary {
+            background: linear-gradient(135deg, #059669 0%, #065f46 100%);
+            color: white;
+            font-weight: bold;
+            padding: 0.75rem 1.5rem;
+            border-radius: 0.75rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+
+        .animate-fade { 
+            animation: fadeIn 0.4s ease forwards; 
+        }
+
+        @keyframes fadeIn { 
+            from { opacity: 0; transform: translateY(10px); } 
+            to { opacity: 1; transform: translateY(0); } 
+        }
+
+        .spinner {
+            border: 3px solid rgba(5, 150, 105, 0.1);
+            border-top: 3px solid #059669;
+            border-radius: 50%;
+            width: 30px;
+            height: 30px;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useCallback } = React;
+
+        const CONFIG = {
+            user: "tocontactmsg-ai", 
+            repo: "De",      
+            path: "ads",     
+            wa: "249998615193",
+            domain: "soug.eldelala.com"
+        };
+
+        function App() {
+            const [view, setView] = useState("feed");
+            const [tenders, setTenders] = useState([]);
+            const [search, setSearch] = useState("");
+            const [loading, setLoading] = useState(false);
+            const [expanded, setExpanded] = useState({});
+            const [items, setItems] = useState([{ name: "", qty: "" }]);
+            
+            const urlParams = new URLSearchParams(window.location.search);
+            const sharedRef = urlParams.get('ref');
+
+            // Fetch Data
+            const fetchTenders = useCallback(async () => {
+                setLoading(true);
+                try {
+                    const response = await fetch(`https://api.github.com/repos/${CONFIG.user}/${CONFIG.repo}/contents/${CONFIG.path}`);
+                    const files = await response.json();
+                    const tenderFiles = files.filter(f => f.name.endsWith('.json'));
+                    const tendersData = await Promise.all(
+                        tenderFiles.map(async (f) => {
+                            const res = await fetch(f.download_url);
+                            return await res.json();
+                        })
+                    );
+                    setTenders(tendersData.sort((a, b) => b.id - a.id));
+                    if (sharedRef) setExpanded({ [sharedRef]: true });
+                } catch (error) {
+                    console.error('Error:', error);
+                } finally {
+                    setLoading(false);
+                }
+            }, [sharedRef]);
+
+            useEffect(() => {
+                if (view === "feed") fetchTenders();
+            }, [view, fetchTenders]);
+
+            const filteredTenders = tenders.filter(item => {
+                if (sharedRef && !search) return item.id === sharedRef;
+                const query = search.toLowerCase();
+                return item.id.toString().includes(query) || 
+                       item.location.toLowerCase().includes(query) || 
+                       item.items.some(i => i.name.toLowerCase().includes(query));
+            });
+
+            const handlePost = (e) => {
+                e.preventDefault();
+                const fd = new FormData(e.target);
+                const d = new Date();
+                const refCode = d.getFullYear().toString().slice(-2) + (d.getMonth()+1).toString().padStart(2, '0') + d.getDate().toString().padStart(2, '0') + d.getHours().toString().padStart(2, '0');
+                
+                const itemList = items.map((it, i) => `${i+1}. ${it.name} (${it.qty})`).join('\n');
+                const message = `🛒 *طلب شراء جديد*\n*المرجع:* *${refCode}*\n*العميل:* *${fd.get("user")}*\n*الموقع:* *${fd.get("loc")}*\n*الهاتف:* *${fd.get("phone")}*\n----------\n*قائمة الطلبات:*\n${itemList}`;
+                
+                window.open(`https://wa.me/${CONFIG.wa}?text=${encodeURIComponent(message)}`);
+            };
+
+            return (
+                <div className="max-w-xl mx-auto px-4 py-8">
+                    {/* Header */}
+                    <header className="text-center mb-8">
+                        <h1 className="text-4xl font-black tracking-tight">
+                            <span className="text-emerald-600">SOUG</span>
+                            <span className="text-slate-800">.ELDELALA</span>
+                        </h1>
+                        <p className="text-sm text-slate-500 font-bold mt-1">سوق الخضروات والمواد الغذائية</p>
+                    </header>
+
+                    {/* Intro Card */}
+                    <div className="bg-emerald-50 border-r-4 border-emerald-600 p-5 rounded-xl mb-8">
+                        <h2 className="text-lg font-bold text-emerald-900 mb-2">
+                            <i className="fas fa-shopping-basket ml-2"></i>
+                            تسوق بذكاء
+                        </h2>
+                        <p className="text-sm text-emerald-700">يمكنك طلب احتياجات المنزل من خضروات، لحوم، ومواد تموينية بكل سهولة عبر الواتساب.</p>
+                    </div>
+
+                    {/* Nav */}
+                    <nav className="flex justify-around mb-8 border-b border-slate-100">
+                        <button onClick={() => setView("feed")} className={`pb-4 px-4 font-bold transition-all ${view==='feed'?'nav-active':'text-slate-400'}`}>
+                            <i className="fas fa-store ml-2"></i>العروض
+                        </button>
+                        <button onClick={() => setView("post")} className={`pb-4 px-4 font-bold transition-all ${view==='post'?'nav-active':'text-slate-400'}`}>
+                            <i className="fas fa-shopping-cart ml-2"></i>طلب خاص
+                        </button>
+                    </nav>
+
+                    {view === "feed" ? (
+                        <div className="animate-fade">
+                            <div className="relative mb-6">
+                                <i className="fas fa-search absolute right-4 top-4 text-slate-400"></i>
+                                <input 
+                                    type="text" 
+                                    placeholder="ابحث عن منتج أو موقع..."
+                                    className="search-input outline-none focus:border-emerald-500"
+                                    value={search}
+                                    onChange={(e) => setSearch(e.target.value)}
+                                />
+                            </div>
+
+                            <div className="space-y-4">
+                                {loading ? <div className="flex justify-center py-10"><div className="spinner"></div></div> : 
+                                 filteredTenders.map(tndr => (
+                                    <div key={tndr.id} className="card-order p-5 animate-fade bg-white">
+                                        <div className="flex justify-between items-start mb-4">
+                                            <div>
+                                                <span className="text-[10px] bg-slate-100 px-2 py-1 rounded text-slate-500 font-mono">#{tndr.id}</span>
+                                                <h3 className="text-lg font-bold text-slate-800 mt-1">
+                                                    <i className="fas fa-map-marker-alt text-emerald-500 ml-2"></i>
+                                                    {tndr.location}
+                                                </h3>
+                                            </div>
+                                            <span className="bg-emerald-100 text-emerald-700 text-xs font-bold px-2 py-1 rounded-lg">
+                                                {tndr.items.length} أصناف
+                                            </span>
+                                        </div>
+
+                                        <div className="space-y-2 mb-4">
+                                            {tndr.items.slice(0, expanded[tndr.id] ? undefined : 3).map((it, idx) => (
+                                                <div key={idx} className="flex justify-between bg-slate-50 p-2 rounded-lg text-sm">
+                                                    <span className="font-medium">{it.name}</span>
+                                                    <span className="font-bold text-emerald-600">{it.qty}</span>
+                                                </div>
+                                            ))}
+                                            {tndr.items.length > 3 && (
+                                                <button onClick={() => setExpanded({...expanded, [tndr.id]: !expanded[tndr.id]})} className="w-full text-center text-xs text-emerald-600 font-bold py-1">
+                                                    {expanded[tndr.id] ? 'عرض أقل' : `+${tndr.items.length-3} المزيد`}
+                                                </button>
+                                            )}
+                                        </div>
+
+                                        <div className="grid grid-cols-2 gap-3">
+                                            <button onClick={() => {
+                                                const msg = `أرغب في الاستفسار عن الطلبية رقم: ${tndr.id}`;
+                                                window.open(`https://wa.me/${CONFIG.wa}?text=${encodeURIComponent(msg)}`);
+                                            }} className="btn-primary">
+                                                <i className="fab fa-whatsapp"></i> اطلب الآن
+                                            </button>
+                                            <button onClick={() => {
+                                                const link = `${window.location.origin}${window.location.pathname}?ref=${tndr.id}`;
+                                                window.open(`https://wa.me/?text=${encodeURIComponent("شاهد هذا العرض من سوق الدلالة: " + link)}`);
+                                            }} className="bg-slate-100 text-slate-600 font-bold py-2 rounded-lg text-sm">
+                                                <i className="fas fa-share-alt ml-1"></i> مشاركة
+                                            </button>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    ) : (
+                        <div className="card-order p-6 animate-fade">
+                            <h3 className="text-xl font-bold mb-6 text-slate-800 border-b pb-4">قائمة طلباتك</h3>
+                            <form onSubmit={handlePost} className="space-y-4">
+                                <input required name="user" placeholder="الاسم الكامل" className="w-full p-3 bg-slate-50 border rounded-xl outline-none focus:border-emerald-500" />
+                                <input required name="phone" placeholder="رقم الهاتف" className="w-full p-3 bg-slate-50 border rounded-xl outline-none focus:border-emerald-500" />
+                                <input required name="loc" placeholder="عنوان التوصيل (المنطقة / الحي)" className="w-full p-3 bg-slate-50 border rounded-xl outline-none focus:border-emerald-500" />
+                                
+                                <div className="pt-4">
+                                    <p className="text-sm font-bold text-slate-500 mb-3">الأصناف المطلوبة:</p>
+                                    {items.map((it, idx) => (
+                                        <div key={idx} className="flex gap-2 mb-3">
+                                            <input required placeholder="مثلاً: كيلو طماطم" className="flex-1 p-3 bg-white border rounded-xl text-sm outline-none focus:border-emerald-500" value={it.name} onChange={e => {
+                                                const n = [...items]; n[idx].name = e.target.value; setItems(n);
+                                            }} />
+                                            <input required placeholder="الكمية" className="w-20 p-3 bg-white border rounded-xl text-sm text-center font-bold outline-none focus:border-emerald-500" value={it.qty} onChange={e => {
+                                                const n = [...items]; n[idx].qty = e.target.value; setItems(n);
+                                            }} />
+                                            {items.length > 1 && <button type="button" onClick={() => setItems(items.filter((_, i) => i !== idx))} className="text-red-400 px-2"><i className="fas fa-trash"></i></button>}
+                                        </div>
+                                    ))}
+                                    <button type="button" onClick={() => setItems([...items, {name:"", qty:""}])} className="w-full py-2 border-2 border-dashed border-emerald-200 text-emerald-600 rounded-xl text-sm font-bold">
+                                        + إضافة صنف آخر
+                                    </button>
+                                </div>
+                                
+                                <button type="submit" className="w-full py-4 bg-emerald-600 text-white rounded-2xl font-bold text-lg shadow-lg shadow-emerald-200 mt-6">
+                                    <i className="fab fa-whatsapp ml-2"></i> إرسال الطلب للمتجر
+                                </button>
+                            </form>
+                        </div>
+                    )}
+
+                    <footer className="mt-12 text-center text-slate-400 text-xs pb-10">
+                        <p>© {new Date().getFullYear()} SOUG.ELDELALA.COM</p>
+                        <p className="mt-1">جميع الحقوق محفوظة - منصة الدلالة للتسوق</p>
+                    </footer>
+                </div>
+            );
+        }
+        
+        ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+    </script>
+</body>
+</html>
