@@ -1,6 +1,13 @@
 <!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#059669">
+    <script>
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.register('sw.js');
+      }
+    </script>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>سوق الدلالة | لتوريد السلع</title>
@@ -9,124 +16,207 @@
     <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.23/jspdf.plugin.autotable.min.js"></script>
     
     <script src="https://cdn.jsdelivr.net/npm/arabic-reshaper@1.1.0/index.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/font-big-vfs@1.0.1/dist/index.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/pjs-font-layout-engine@1.0.1/dist/index.min.js"></script>
+
+    <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;700;900&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;700&display=swap');
-        body { font-family: 'Cairo', sans-serif; background-color: #f8fafc; }
+        body { font-family: 'Cairo', sans-serif; background: #f8fafc; color: #1e293b; }
+        .card-supply { background: white; border-radius: 1.25rem; border: 2px solid #e2e8f0; transition: 0.3s; }
+        .card-supply:hover { border-color: #059669; box-shadow: 0 10px 25px rgba(5, 150, 105, 0.1); }
+        .nav-active { color: #059669; border-bottom: 3px solid #059669; font-weight: bold; }
+        .btn-primary { background: linear-gradient(135deg, #059669 0%, #064e3b 100%); color: white; border-radius: 0.75rem; }
+        .spinner { border: 3px solid #f3f3f3; border-top: 3px solid #059669; border-radius: 50%; width: 30px; height: 30px; animation: spin 1s linear infinite; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
     </style>
 </head>
 <body>
     <div id="root"></div>
 
     <script type="text/babel">
-        const { useState, useEffect } = React;
+        const { useState, useEffect, useCallback } = React;
 
-        // --- ARABIC FONT CONFIGURATION ---
-        // To truly fix this, you must convert a .ttf font to Base64. 
-        // Below is a placeholder. Use 'https://rawgit.com/MrRio/jsPDF/master/fontconverter/fontconverter.html'
-        // to get your own Base64 string from an Arabic .ttf file.
-        const ARABIC_FONT_BASE64 = "AAEAAAARAQAABAAQR0RFR...[TRUNCATED_BASE64_STRING]"; 
+        const CONFIG = {
+            user: "tocontactmsg-ai", 
+            repo: "so",      
+            path: "ads",     
+            wa: "249998615193",
+            domain: "soug.eldelala.com"
+        };
+
+        // --- ARABIC HELPER FUNCTION ---
+        const fixArabic = (text) => {
+            if (!text) return "";
+            // Reshape then reverse for PDF layout
+            return arabicReshaper.reshape(text).split('').reverse().join('');
+        };
 
         function App() {
+            const [view, setView] = useState("feed");
+            const [tenders, setTenders] = useState([]);
+            const [search, setSearch] = useState("");
+            const [loading, setLoading] = useState(false);
+            const [expanded, setExpanded] = useState({});
             const [items, setItems] = useState([{ name: "", qty: "" }]);
-            const [location, setLocation] = useState("");
+            
+            const urlParams = new URLSearchParams(window.location.search);
+            const sharedRef = urlParams.get('ref');
 
-            const generatePDF = () => {
-                const doc = new jspdf.jsPDF();
-                
-                // 1. Add and set the Arabic Font
-                // Note: You must replace ARABIC_FONT_BASE64 with a real string
+            const fetchTenders = useCallback(async () => {
+                setLoading(true);
                 try {
-                    doc.addFileToVFS("Amiri-Regular.ttf", ARABIC_FONT_BASE64);
-                    doc.addFont("Amiri-Regular.ttf", "Amiri", "normal");
-                    doc.setFont("Amiri");
-                } catch (e) {
-                    console.error("Font embedding failed, using system fallback.");
-                }
+                    const response = await fetch(`https://api.github.com/repos/${CONFIG.user}/${CONFIG.repo}/contents/${CONFIG.path}`);
+                    const files = await response.json();
+                    const jsonFiles = files.filter(f => f.name.endsWith('.json'));
+                    const data = await Promise.all(jsonFiles.map(async f => (await fetch(f.download_url)).json()));
+                    setTenders(data.sort((a, b) => b.id.toString().localeCompare(a.id.toString(), undefined, {numeric: true})));
+                    if (sharedRef) setExpanded({ [sharedRef]: true });
+                } catch (e) { console.error(e); } finally { setLoading(false); }
+            }, [sharedRef]);
 
-                // 2. Reshape Arabic Text (Required for connected letters)
-                const title = "سوق الدلالة - كشف طلبية";
-                const reshapedTitle = typeof ArabicReshaper !== 'undefined' 
-                    ? ArabicReshaper.convertArabic(title) 
-                    : title;
+            useEffect(() => { if (view === "feed") fetchTenders(); }, [view, fetchTenders]);
+
+            // --- FIXED PDF GENERATION ---
+            const generatePDF = (order) => {
+                const doc = new jspdf.jsPDF();
+
+                /* IMPORTANT: You must embed a font string here. 
+                   Replace 'PASTE_BASE64_HERE' with your .ttf to Base64 string.
+                */
+                // doc.addFileToVFS("Cairo.ttf", "PASTE_BASE64_HERE");
+                // doc.addFont("Cairo.ttf", "Cairo", "normal");
+                // doc.setFont("Cairo");
 
                 doc.setFontSize(22);
-                doc.text(reshapedTitle, 105, 20, { align: "center" });
+                doc.text(fixArabic("سوق الدلالة - كشف طلبية"), 105, 20, {align:"center"});
+                
+                doc.setFontSize(10);
+                const infoText = `REF: ${order.id} | Location: ${order.location}`;
+                doc.text(infoText, 105, 30, {align:"center"});
 
-                // 3. Generate Table with RTL settings
                 doc.autoTable({
                     startY: 40,
                     head: [[
-                        ArabicReshaper.convertArabic('الكمية'), 
-                        ArabicReshaper.convertArabic('الصنف'), 
+                        fixArabic('الكمية'), 
+                        fixArabic('الصنف'), 
                         '#'
                     ]],
-                    body: items.map((it, i) => [
-                        it.qty, 
-                        ArabicReshaper.convertArabic(it.name), 
-                        i + 1
+                    body: order.items.map((it, i) => [
+                        fixArabic(it.qty.toString()), 
+                        fixArabic(it.name), 
+                        i+1
                     ]),
                     styles: { 
-                        font: "Amiri", 
-                        halign: 'right' // Right-align for Arabic
+                        halign: 'right', // Align right for Arabic
+                        font: "helvetica" // Replace with "Cairo" once font is added
                     },
                     headStyles: { fillColor: [5, 150, 105] },
                     theme: 'grid'
                 });
 
-                doc.save(`Order-${Date.now()}.pdf`);
+                doc.save(`Order-${order.id}.pdf`);
+            };
+
+            const handlePost = (e) => { 
+                e.preventDefault();
+                const fd = new FormData(e.target);
+                const d = new Date();
+                const refCode = "S" + d.getFullYear().toString().slice(-2) + 
+                    (d.getMonth() + 1).toString().padStart(2, '0') + 
+                    d.getDate().toString().padStart(2, '0') + 
+                    d.getHours().toString().padStart(2, '0') + 
+                    d.getMinutes().toString().padStart(2, '0');
+    
+                const itemList = items.map((it, i) => `${i+1}. ${it.name} (${it.qty})`).join('\n');
+                const message = `📦 *طلب توريد جديد للمحل*\n*المرجع:* ${refCode}\n*المحل:* ${fd.get("shop")}\n*الموقع:* ${fd.get("loc")}\n*المسؤول:* ${fd.get("user")}\n----------\n*البضاعة المطلوبة:*\n${itemList}`;
+                window.open(`https://wa.me/${CONFIG.wa}?text=${encodeURIComponent(message)}`);
             };
 
             return (
-                <div className="max-w-md mx-auto p-4">
-                    <h1 className="text-2xl font-bold text-center mb-6 text-emerald-700">طلب توريد سلع</h1>
-                    <div className="bg-white p-6 rounded-xl shadow-md border border-emerald-100">
-                        {items.map((it, idx) => (
-                            <div key={idx} className="flex gap-2 mb-3">
-                                <input 
-                                    className="border p-2 rounded w-full text-right" 
-                                    placeholder="اسم الصنف (بالعربية)" 
-                                    value={it.name}
-                                    onChange={e => {
-                                        const newItems = [...items];
-                                        newItems[idx].name = e.target.value;
-                                        setItems(newItems);
-                                    }}
-                                />
-                                <input 
-                                    className="border p-2 rounded w-20 text-center" 
-                                    placeholder="الكمية" 
-                                    value={it.qty}
-                                    onChange={e => {
-                                        const newItems = [...items];
-                                        newItems[idx].qty = e.target.value;
-                                        setItems(newItems);
-                                    }}
-                                />
+                <div className="max-w-xl mx-auto px-4 py-8">
+                    <header className="text-center mb-10">
+                        <h1 className="text-3xl font-black text-emerald-700">سوق الدلالة</h1>
+                        <p className="text-xs font-bold text-slate-500 uppercase tracking-widest">منصة توريد السلع للمحلات</p>
+                    </header>
+
+                    <nav className="flex justify-center gap-8 mb-8 border-b">
+                        <button onClick={() => setView("feed")} className={`pb-4 px-2 font-bold ${view==='feed'?'nav-active':'text-slate-400'}`}>عرض الطلبات</button>
+                        <button onClick={() => setView("post")} className={`pb-4 px-2 font-bold ${view==='post'?'nav-active':'text-slate-400'}`}>إضافة طلب بضاعة</button>
+                    </nav>
+
+                    {view === "feed" ? (
+                        <div className="animate-fade">
+                            <input 
+                                type="text" 
+                                placeholder="ابحث برقم الطلب أو الصنف..." 
+                                className="w-full p-4 rounded-xl border-2 border-slate-200 mb-6 text-right"
+                                onChange={(e) => setSearch(e.target.value)}
+                            />
+
+                            <div className="space-y-4">
+                                {loading ? <div className="flex justify-center py-10"><div className="spinner"></div></div> : 
+                                 tenders.filter(t => t.id.toString().includes(search) || t.items.some(i => i.name.includes(search))).map(order => (
+                                    <div key={order.id} className="card-supply p-5 bg-white">
+                                        <div className="flex justify-between items-start mb-4">
+                                            <div>
+                                                <span className="text-xs font-mono bg-slate-100 px-2 py-1 rounded">REF: {order.id}</span>
+                                                <h3 className="font-bold text-lg mt-1 text-slate-800">{order.location}</h3>
+                                            </div>
+                                            <button onClick={() => generatePDF(order)} className="bg-red-50 text-red-600 w-10 h-10 rounded-full flex items-center justify-center">
+                                                <i className="fas fa-file-pdf"></i>
+                                            </button>
+                                        </div>
+
+                                        <div className="space-y-2 mb-5">
+                                            {order.items.slice(0, expanded[order.id] ? undefined : 3).map((it, idx) => (
+                                                <div key={idx} className="flex justify-between text-sm border-b border-slate-50 pb-1">
+                                                    <span>{it.name}</span>
+                                                    <span className="font-bold text-emerald-700">{it.qty}</span>
+                                                </div>
+                                            ))}
+                                        </div>
+
+                                        <div className="flex gap-2">
+                                            <button onClick={() => window.open(`https://wa.me/${CONFIG.wa}?text=أريد توفير البضاعة للطلب رقم ${order.id}`)} className="btn-primary flex-1 py-3 font-bold">توفير الطلبية</button>
+                                        </div>
+                                    </div>
+                                ))}
                             </div>
-                        ))}
-                        <button 
-                            onClick={() => setItems([...items, { name: "", qty: "" }])}
-                            className="w-full py-2 bg-emerald-50 text-emerald-600 rounded-lg text-sm font-bold mb-4"
-                        >
-                            + إضافة صنف
-                        </button>
-                        <button 
-                            onClick={generatePDF}
-                            className="w-full py-3 bg-emerald-600 text-white rounded-lg font-bold shadow-lg"
-                        >
-                            تحميل PDF (نسخة محسنة)
-                        </button>
-                    </div>
+                        </div>
+                    ) : (
+                        <div className="card-supply p-6 animate-fade bg-white">
+                            <form onSubmit={handlePost} className="space-y-4">
+                                <input required name="shop" placeholder="اسم المحل / البقالة" className="w-full p-3 border rounded-xl" />
+                                <input required name="user" placeholder="اسم صاحب الطلب" className="w-full p-3 border rounded-xl" />
+                                <input required name="loc" placeholder="موقع المحل (المدينة/الحي)" className="w-full p-3 border rounded-xl" />
+                                
+                                <div className="pt-4 border-t">
+                                    {items.map((it, idx) => (
+                                        <div key={idx} className="flex gap-2 mb-2">
+                                            <input required placeholder="الصنف" className="flex-1 p-2 border rounded-lg text-sm" value={it.name} onChange={e => {
+                                                const n = [...items]; n[idx].name = e.target.value; setItems(n);
+                                            }} />
+                                            <input required placeholder="الكمية" className="w-20 p-2 border rounded-lg text-sm text-center font-bold" value={it.qty} onChange={e => {
+                                                const n = [...items]; n[idx].qty = e.target.value; setItems(n);
+                                            }} />
+                                        </div>
+                                    ))}
+                                    <button type="button" onClick={() => setItems([...items, {name:"", qty:""}])} className="w-full py-2 border-2 border-dashed border-emerald-100 text-emerald-600 rounded-lg text-xs font-bold">+ إضافة صنف</button>
+                                </div>
+                                <button type="submit" className="w-full py-4 btn-primary font-bold text-lg shadow-lg">إرسال الطلب عبر الواتساب</button>
+                            </form>
+                        </div>
+                    )}
                 </div>
             );
         }
-
+        
         ReactDOM.createRoot(document.getElementById("root")).render(<App />);
     </script>
 </body>
