@@ -49,14 +49,12 @@
             domain: "soug.eldelala.com"
         };
 
-        // Function to fix Arabic display in PDFs
+        // Reshapes and reverses Arabic text for PDF RTL compatibility 
         const fixArabic = (text) => {
             if (!text) return "";
             try {
                 return arabicReshaper.reshape(text).split('').reverse().join('');
-            } catch (e) {
-                return text; // Fallback to raw text if reshaper fails
-            }
+            } catch (e) { return text; }
         };
 
         function App() {
@@ -64,68 +62,62 @@
             const [tenders, setTenders] = useState([]);
             const [search, setSearch] = useState("");
             const [loading, setLoading] = useState(false);
-            const [expanded, setExpanded] = useState({});
             const [items, setItems] = useState([{ name: "", qty: "" }]);
             
-            const urlParams = new URLSearchParams(window.location.search);
-            const sharedRef = urlParams.get('ref');
-
             const fetchTenders = useCallback(async () => {
                 setLoading(true);
                 try {
                     const response = await fetch(`https://api.github.com/repos/${CONFIG.user}/${CONFIG.repo}/contents/${CONFIG.path}`);
                     const files = await response.json();
-                    const jsonFiles = files.filter(f => f.name.endsWith('.json'));
-                    const data = await Promise.all(jsonFiles.map(async f => (await fetch(f.download_url)).json()));
+                    const data = await Promise.all(files.filter(f => f.name.endsWith('.json')).map(async f => (await fetch(f.download_url)).json()));
                     setTenders(data.sort((a, b) => b.id.toString().localeCompare(a.id.toString(), undefined, {numeric: true})));
-                    if (sharedRef) setExpanded({ [sharedRef]: true });
                 } catch (e) { console.error(e); } finally { setLoading(false); }
-            }, [sharedRef]);
+            }, []);
 
             useEffect(() => { if (view === "feed") fetchTenders(); }, [view, fetchTenders]);
 
             const generatePDF = (order) => {
                 try {
-                    // FIX: Correct way to call jsPDF in modern UMD
                     const { jsPDF } = window.jspdf;
                     const doc = new jsPDF();
 
-                    // PDF Header
-                    doc.setFontSize(20);
-                    doc.text("SOUG ELDELALA - ORDER SHEET", 105, 20, {align:"center"});
+                    /* CRITICAL STEP: Paste a Base64 string of an Arabic .ttf font below.
+                       Without this, Arabic will still be invisible or broken.
+                    */
+                    // doc.addFileToVFS("Cairo.ttf", "PASTE_BASE64_FONT_HERE");
+                    // doc.addFont("Cairo.ttf", "Cairo", "normal");
+                    // doc.setFont("Cairo");
+
+                    doc.setFontSize(22);
+                    doc.text(fixArabic("سوق الدلالة - كشف طلبية"), 105, 20, {align:"center"});
                     
                     doc.setFontSize(10);
-                    doc.text(`REF: ${order.id} | Location: ${order.location}`, 105, 30, {align:"center"});
+                    doc.text(`REF: ${order.id} | ${fixArabic(order.location)}`, 105, 30, {align:"center"});
 
-                    // Table Generation
                     doc.autoTable({
                         startY: 40,
-                        head: [['#', fixArabic('الصنف / Item'), fixArabic('الكمية / Qty')]],
+                        head: [[fixArabic('الكمية'), fixArabic('الصنف'), '#']],
                         body: order.items.map((it, i) => [
-                            i + 1, 
+                            fixArabic(it.qty.toString()), 
                             fixArabic(it.name), 
-                            fixArabic(it.qty.toString())
+                            i+1
                         ]),
                         theme: 'grid',
-                        styles: { halign: 'right' },
+                        styles: { halign: 'right', font: "helvetica" },
                         headStyles: { fillColor: [5, 150, 105] }
                     });
 
-                    // Trigger Save
                     doc.save(`Order-${order.id}.pdf`);
                 } catch (error) {
-                    console.error("PDF Crash:", error);
-                    alert("خطأ في التحميل: يرجى التأكد من اتصالك بالإنترنت");
+                    alert("خطأ: يرجى استخدام متصفح Chrome للتحميل");
                 }
             };
 
             const handlePost = (e) => { 
                 e.preventDefault();
                 const fd = new FormData(e.target);
-                const d = new Date();
-                const refCode = "S" + d.getFullYear().toString().slice(-2) + (d.getMonth() + 1).toString().padStart(2, '0') + d.getDate().toString().padStart(2, '0');
                 const itemList = items.map((it, i) => `${i+1}. ${it.name} (${it.qty})`).join('\n');
-                const message = `📦 *طلب توريد جديد*\n*المرجع:* ${refCode}\n*المحل:* ${fd.get("shop")}\n*البضاعة:*\n${itemList}`;
+                const message = `📦 *طلب توريد جديد*\n*المحل:* ${fd.get("shop")}\n*البضاعة:*\n${itemList}`;
                 window.open(`https://wa.me/${CONFIG.wa}?text=${encodeURIComponent(message)}`);
             };
 
@@ -165,7 +157,7 @@
                                                 </div>
                                             ))}
                                         </div>
-                                        <button onClick={() => window.open(`https://wa.me/${CONFIG.wa}?text=أريد توفير الطلب ${order.id}`)} className="btn-primary w-full py-3 font-bold">توفير الطلبية</button>
+                                        <button onClick={() => window.open(`https://wa.me/${CONFIG.wa}?text=توفير طلب ${order.id}`)} className="btn-primary w-full py-3 font-bold">توفير الطلبية</button>
                                     </div>
                                 ))}
                             </div>
@@ -174,8 +166,6 @@
                         <div className="card-supply p-6 animate-fade bg-white">
                             <form onSubmit={handlePost} className="space-y-4">
                                 <input required name="shop" placeholder="اسم المحل" className="w-full p-3 border rounded-xl" />
-                                <input required name="user" placeholder="اسمك" className="w-full p-3 border rounded-xl" />
-                                <input required name="loc" placeholder="الموقع" className="w-full p-3 border rounded-xl" />
                                 <div className="pt-4 border-t">
                                     {items.map((it, idx) => (
                                         <div key={idx} className="flex gap-2 mb-2">
@@ -189,7 +179,7 @@
                                     ))}
                                     <button type="button" onClick={() => setItems([...items, {name:"", qty:""}])} className="w-full py-2 border-2 border-dashed border-emerald-100 text-emerald-600 rounded-lg">+ إضافة صنف</button>
                                 </div>
-                                <button type="submit" className="w-full py-4 btn-primary font-bold text-lg">إرسال عبر الواتساب</button>
+                                <button type="submit" className="w-full py-4 btn-primary font-bold text-lg">إرسال واتساب</button>
                             </form>
                         </div>
                     )}
