@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>سوق الدلالة | نظام التوريد المطور</title>
+    <title>سوق الدلالة | توريد السلع</title>
     
     <script src="https://cdn.tailwindcss.com"></script>
     <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
@@ -15,7 +15,7 @@
     
     <script src="https://cdn.jsdelivr.net/npm/arabic-reshaper@1.1.0/index.min.js"></script>
 
-    <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;700;900&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 
     <style>
@@ -39,12 +39,11 @@
             wa: "249998615193"
         };
 
-        // الدالة التي تعالج مشكلة الرموز الغريبة والحروف المقطعة
-        const processArabic = (text) => {
+        // دالة الإصلاح الجذري للنص العربي في PDF
+        const fixArabicText = (text) => {
             if (!text) return "";
             try {
-                // 1. إعادة تشكيل الحروف لترتبط ببعضها (Shaping)
-                // 2. عكس النص (Reverse) ليظهر صحيحاً في PDF
+                // دمج الحروف ثم عكسها ليقرأها محرك PDF بشكل صحيح
                 return arabicReshaper.reshape(text).split('').reverse().join('');
             } catch (e) { return text; }
         };
@@ -72,38 +71,35 @@
                     const { jsPDF } = window.jspdf;
                     const doc = new jsPDF();
 
-                    // استخدام متغير الـ 'font' الموجود داخل ملف Cairo-normal.js
+                    // استخدام متغير 'font' من ملف Cairo-normal.js
                     if (typeof font !== 'undefined') {
                         doc.addFileToVFS("Cairo.ttf", font);
                         doc.addFont("Cairo.ttf", "Cairo", "normal");
                         doc.setFont("Cairo");
                     }
 
-                    // كتابة الترويسة مع معالجة اللغة
                     doc.setFontSize(22);
-                    doc.text(processArabic("سوق الدلالة - كشف طلبية"), 105, 20, {align:"center"});
+                    doc.text(fixArabicText("سوق الدلالة - طلبية بضاعة"), 105, 20, {align:"center"});
                     
                     doc.setFontSize(10);
                     doc.text(`REF: ${order.id}`, 105, 30, {align:"center"});
-                    doc.text(processArabic(`الموقع: ${order.location}`), 105, 36, {align:"center"});
+                    doc.text(fixArabicText(`الموقع: ${order.location}`), 105, 36, {align:"center"});
 
-                    // رسم الجدول مع محاذاة لليمين ودعم العربية
                     doc.autoTable({
                         startY: 45,
-                        head: [[processArabic('الكمية'), processArabic('الصنف'), '#']],
+                        head: [[fixArabicText('الكمية'), fixArabicText('الصنف'), '#']],
                         body: order.items.map((it, i) => [
                             it.qty.toString(), 
-                            processArabic(it.name), 
+                            fixArabicText(it.name), 
                             i+1
                         ]),
-                        theme: 'grid',
-                        styles: { font: "Cairo", halign: 'right' }, // التفعيل الحقيقي للخط
+                        styles: { font: "Cairo", halign: 'right' },
                         headStyles: { fillColor: [5, 150, 105] }
                     });
 
                     doc.save(`Order-${order.id}.pdf`);
                 } catch (err) {
-                    alert("خطأ: تأكد من وجود ملف Cairo-normal.js في نفس المجلد");
+                    alert("تنبيه: تأكد من وجود ملف Cairo-normal.js في نفس المجلد مع هذا الملف.");
                 }
             };
 
@@ -111,7 +107,10 @@
                 e.preventDefault();
                 const fd = new FormData(e.target);
                 const itemList = items.map((it, i) => `${i+1}. ${it.name} (${it.qty})`).join('\n');
-                const message = `📦 *طلب توريد جديد*\n*المحل:* ${fd.get("shop")}\n*المسؤول:* ${fd.get("user")}\n*الموقع:* ${fd.get("loc")}\n----------\n*البضاعة:*\n${itemList}`;
+                
+                // إضافة كل الحقول المطلوبة (اسم المحل، المسؤول، الموقع)
+                const message = `📦 *طلب توريد جديد*\n*المحل:* ${fd.get("shop")}\n*المسؤول:* ${fd.get("user")}\n*الموقع:* ${fd.get("loc")}\n----------\n*الأصناف:*\n${itemList}`;
+                
                 window.open(`https://wa.me/${CONFIG.wa}?text=${encodeURIComponent(message)}`);
             };
 
@@ -119,7 +118,7 @@
                 <div className="max-w-xl mx-auto px-4 py-8">
                     <header className="text-center mb-10">
                         <h1 className="text-3xl font-black text-emerald-700">سوق الدلالة</h1>
-                        <p className="text-xs font-bold text-slate-500">منصة توريد السلع للمحلات</p>
+                        <p className="text-xs font-bold text-slate-500 uppercase">نظام توريد السلع</p>
                     </header>
 
                     <nav className="flex justify-center gap-8 mb-8 border-b">
@@ -128,10 +127,10 @@
                     </nav>
 
                     {view === "feed" ? (
-                        <div className="animate-fade">
-                            {loading ? <p className="text-center py-10">جاري تحميل البيانات...</p> : 
+                        <div className="space-y-4">
+                            {loading ? <p className="text-center">جاري التحميل...</p> : 
                              tenders.map(order => (
-                                <div key={order.id} className="bg-white p-5 rounded-2xl border-2 mb-4 shadow-sm">
+                                <div key={order.id} className="bg-white p-5 rounded-2xl border-2 shadow-sm">
                                     <div className="flex justify-between items-start mb-4">
                                         <button onClick={() => generatePDF(order)} className="bg-red-50 text-red-600 w-12 h-12 rounded-full flex items-center justify-center hover:bg-red-600 hover:text-white transition-all">
                                             <i className="fas fa-file-pdf text-xl"></i>
@@ -141,7 +140,7 @@
                                             <h3 className="font-bold text-lg mt-1">{order.location}</h3>
                                         </div>
                                     </div>
-                                    <button onClick={() => window.open(`https://wa.me/${CONFIG.wa}?text=توفير الطلب ${order.id}`)} className="btn-primary w-full py-3 font-bold">توفير الطلبية</button>
+                                    <button onClick={() => window.open(`https://wa.me/${CONFIG.wa}?text=توفير طلب رقم ${order.id}`)} className="btn-primary w-full py-3 font-bold">توفير الطلبية</button>
                                 </div>
                             ))}
                         </div>
@@ -149,8 +148,8 @@
                         <div className="bg-white p-6 rounded-2xl border-2 shadow-md">
                             <form onSubmit={handlePost} className="space-y-4">
                                 <input required name="shop" placeholder="اسم المحل" className="w-full p-3 border rounded-xl text-right" />
-                                <input required name="user" placeholder="اسم صاحب الطلب" className="w-full p-3 border rounded-xl text-right" />
-                                <input required name="loc" placeholder="الموقع / المدينة" className="w-full p-3 border rounded-xl text-right" />
+                                <input required name="user" placeholder="اسم المسؤول" className="w-full p-3 border rounded-xl text-right" />
+                                <input required name="loc" placeholder="الموقع بالتفصيل" className="w-full p-3 border rounded-xl text-right" />
                                 <div className="pt-4 border-t">
                                     {items.map((it, idx) => (
                                         <div key={idx} className="flex gap-2 mb-2">
@@ -162,9 +161,9 @@
                                             }} />
                                         </div>
                                     ))}
-                                    <button type="button" onClick={() => setItems([...items, {name:"", qty:""}])} className="w-full py-2 border-2 border-dashed border-emerald-100 text-emerald-600 rounded-lg">+ إضافة صنف جديد</button>
+                                    <button type="button" onClick={() => setItems([...items, {name:"", qty:""}])} className="w-full py-2 border-2 border-dashed border-emerald-100 text-emerald-600 rounded-lg">+ إضافة صنف</button>
                                 </div>
-                                <button type="submit" className="w-full py-4 btn-primary font-bold text-lg">إرسال عبر واتساب</button>
+                                <button type="submit" className="w-full py-4 btn-primary font-bold text-lg">إرسال عبر الواتساب</button>
                             </form>
                         </div>
                     )}
