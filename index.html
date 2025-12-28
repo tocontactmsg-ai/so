@@ -1,8 +1,16 @@
 <!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#059669">
+    <script>
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.register('sw.js');
+      }
+    </script>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="description" content="سوق الدلالة - حلقة الوصل بين تجار التجزئة وموردي الجملة في السودان">
     <title>سوق الدلالة | لتوريد السلع</title>
     
     <script src="https://cdn.tailwindcss.com"></script>
@@ -19,13 +27,19 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 
     <style>
-        body { font-family: 'Cairo', sans-serif; background: #f8fafc; }
+        body { font-family: 'Cairo', sans-serif; background: #f8fafc; color: #1e293b; }
+        .card-supply { background: white; border-radius: 1.25rem; border: 2px solid #e2e8f0; transition: 0.3s; }
+        .card-supply:hover { border-color: #059669; box-shadow: 0 10px 25px rgba(5, 150, 105, 0.1); }
         .nav-active { color: #059669; border-bottom: 3px solid #059669; font-weight: bold; }
         .btn-primary { background: linear-gradient(135deg, #059669 0%, #064e3b 100%); color: white; border-radius: 0.75rem; }
+        .spinner { border: 3px solid #f3f3f3; border-top: 3px solid #059669; border-radius: 50%; width: 30px; height: 30px; animation: spin 1s linear infinite; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
     </style>
 </head>
 <body>
     <div id="root"></div>
+
+    <script src="Cairo-normal.js"></script>
 
     <script type="text/babel">
         const { useState, useEffect, useCallback } = React;
@@ -34,14 +48,14 @@
             user: "tocontactmsg-ai", 
             repo: "so",      
             path: "ads",     
-            wa: "249998615193"
+            wa: "249998615193",
+            domain: "soug.eldelala.com"
         };
 
-        // دالة إصلاح اللغة العربية في الـ PDF
+        // دالة معالجة النص العربي للـ PDF
         const fixArabic = (text) => {
             if (!text) return "";
             try {
-                // تجميع الحروف وعكسها لتناسب محرك PDF
                 return arabicReshaper.reshape(text).split('').reverse().join('');
             } catch (e) { return text; }
         };
@@ -49,8 +63,10 @@
         function App() {
             const [view, setView] = useState("feed");
             const [tenders, setTenders] = useState([]);
+            const [search, setSearch] = useState("");
             const [loading, setLoading] = useState(false);
-
+            const [items, setItems] = useState([{ name: "", qty: "" }]);
+            
             const fetchTenders = useCallback(async () => {
                 setLoading(true);
                 try {
@@ -68,62 +84,119 @@
                     const { jsPDF } = window.jspdf;
                     const doc = new jsPDF();
 
-                    // عنوان الملف
+                    // حقن الخط الذي قمت برفعه
+                    if (typeof font !== 'undefined') {
+                        doc.addFileToVFS("Cairo.ttf", font);
+                        doc.addFont("Cairo.ttf", "Cairo", "normal");
+                        doc.setFont("Cairo");
+                    }
+
                     doc.setFontSize(22);
-                    doc.text("SOUG ELDELALA - ORDER", 105, 20, {align:"center"});
+                    doc.text(fixArabic("سوق الدلالة - كشف طلبية"), 105, 20, {align:"center"});
                     
                     doc.setFontSize(10);
                     doc.text(`REF: ${order.id}`, 105, 30, {align:"center"});
-                    // إصلاح نص الموقع العربي
                     doc.text(fixArabic(`الموقع: ${order.location}`), 105, 36, {align:"center"});
 
                     doc.autoTable({
                         startY: 45,
                         head: [[fixArabic('الكمية'), fixArabic('الصنف'), '#']],
                         body: order.items.map((it, i) => [
-                            it.qty, 
+                            it.qty.toString(), 
                             fixArabic(it.name), 
                             i+1
                         ]),
-                        styles: { halign: 'right' }, // محاذاة لليمين للنصوص العربية
+                        theme: 'grid',
+                        styles: { font: "Cairo", halign: 'right' },
                         headStyles: { fillColor: [5, 150, 105] }
                     });
 
                     doc.save(`Order-${order.id}.pdf`);
-                } catch (error) {
-                    console.error("PDF Error:", error);
-                    alert("عذراً، حدث خطأ أثناء إنشاء الملف. حاول مرة أخرى من متصفح مختلف.");
+                } catch (err) {
+                    alert("خطأ: يرجى التأكد من ملف الخط Cairo-normal.js");
                 }
             };
 
+            const handlePost = (e) => { 
+                e.preventDefault();
+                const fd = new FormData(e.target);
+                const d = new Date();
+                const refCode = "S" + d.getFullYear().toString().slice(-2) + (d.getMonth() + 1).toString().padStart(2, '0') + d.getDate().toString().padStart(2, '0');
+                
+                // تجميع كل البيانات الناقصة
+                const shop = fd.get("shop");
+                const user = fd.get("user");
+                const loc = fd.get("loc");
+                const itemList = items.map((it, i) => `${i+1}. ${it.name} (${it.qty})`).join('\n');
+                
+                const message = `📦 *طلب توريد جديد*\n*المرجع:* ${refCode}\n*المحل:* ${shop}\n*المسؤول:* ${user}\n*الموقع:* ${loc}\n----------\n*البضاعة:*\n${itemList}`;
+                window.open(`https://wa.me/${CONFIG.wa}?text=${encodeURIComponent(message)}`);
+            };
+
             return (
-                <div className="max-w-xl mx-auto px-4 py-8 text-right">
+                <div className="max-w-xl mx-auto px-4 py-8">
                     <header className="text-center mb-10">
                         <h1 className="text-3xl font-black text-emerald-700">سوق الدلالة</h1>
                         <p className="text-xs font-bold text-slate-500 uppercase">منصة توريد السلع</p>
                     </header>
 
                     <nav className="flex justify-center gap-8 mb-8 border-b">
-                        <button onClick={() => setView("feed")} className={`pb-4 px-2 ${view==='feed'?'nav-active':'text-slate-400'}`}>عرض الطلبات</button>
+                        <button onClick={() => setView("feed")} className={`pb-4 px-2 font-bold ${view==='feed'?'nav-active':'text-slate-400'}`}>عرض الطلبات</button>
+                        <button onClick={() => setView("post")} className={`pb-4 px-2 font-bold ${view==='post'?'nav-active':'text-slate-400'}`}>إضافة طلب</button>
                     </nav>
 
-                    <div className="space-y-4">
-                        {loading ? <p className="text-center">جاري التحميل...</p> : 
-                         tenders.map(order => (
-                            <div key={order.id} className="bg-white p-5 rounded-2xl border-2 border-slate-100 shadow-sm">
-                                <div className="flex justify-between items-center mb-4">
-                                    <button onClick={() => generatePDF(order)} className="bg-red-50 text-red-600 w-12 h-12 rounded-full flex items-center justify-center hover:bg-red-600 hover:text-white transition-all">
-                                        <i className="fas fa-file-pdf text-xl"></i>
-                                    </button>
-                                    <div className="text-right">
-                                        <span className="text-xs bg-slate-100 px-2 py-1 rounded">REF: {order.id}</span>
-                                        <h3 className="font-bold text-lg mt-1">{order.location}</h3>
+                    {view === "feed" ? (
+                        <div className="animate-fade">
+                            <input type="text" placeholder="ابحث..." className="w-full p-4 rounded-xl border-2 mb-6 text-right" onChange={(e) => setSearch(e.target.value)} />
+                            <div className="space-y-4">
+                                {loading ? <div className="flex justify-center py-10"><div className="spinner"></div></div> : 
+                                 tenders.filter(t => t.id.toString().includes(search) || t.items.some(i => i.name.includes(search))).map(order => (
+                                    <div key={order.id} className="card-supply p-5 bg-white">
+                                        <div className="flex justify-between items-start mb-4">
+                                            <div>
+                                                <span className="text-xs font-mono bg-slate-100 px-2 py-1 rounded">REF: {order.id}</span>
+                                                <h3 className="font-bold text-lg mt-1 text-slate-800">{order.location}</h3>
+                                            </div>
+                                            <button onClick={() => generatePDF(order)} className="bg-red-50 text-red-600 w-12 h-12 rounded-full flex items-center justify-center hover:bg-red-600 hover:text-white transition-all">
+                                                <i className="fas fa-file-pdf text-xl"></i>
+                                            </button>
+                                        </div>
+                                        <div className="space-y-2 mb-5">
+                                            {order.items.slice(0, 3).map((it, idx) => (
+                                                <div key={idx} className="flex justify-between text-sm border-b pb-1">
+                                                    <span>{it.name}</span>
+                                                    <span className="font-bold text-emerald-700">{it.qty}</span>
+                                                </div>
+                                            ))}
+                                        </div>
+                                        <button onClick={() => window.open(`https://wa.me/${CONFIG.wa}?text=توفير الطلب ${order.id}`)} className="btn-primary w-full py-3 font-bold">توفير الطلبية</button>
                                     </div>
-                                </div>
-                                <button onClick={() => window.open(`https://wa.me/${CONFIG.wa}?text=توفير طلب ${order.id}`)} className="btn-primary w-full py-3 font-bold">توفير الطلبية</button>
+                                ))}
                             </div>
-                        ))}
-                    </div>
+                        </div>
+                    ) : (
+                        <div className="card-supply p-6 bg-white shadow-md">
+                            <form onSubmit={handlePost} className="space-y-4">
+                                <input required name="shop" placeholder="اسم المحل" className="w-full p-3 border rounded-xl" />
+                                <input required name="user" placeholder="اسم المسؤول" className="w-full p-3 border rounded-xl" />
+                                <input required name="loc" placeholder="الموقع بالتفصيل" className="w-full p-3 border rounded-xl" />
+                                <div className="pt-4 border-t">
+                                    {items.map((it, idx) => (
+                                        <div key={idx} className="flex gap-2 mb-2">
+                                            <input required placeholder="الصنف" className="flex-1 p-2 border rounded-lg" value={it.name} onChange={e => {
+                                                const n = [...items]; n[idx].name = e.target.value; setItems(n);
+                                            }} />
+                                            <input required placeholder="الكمية" className="w-20 p-2 border rounded-lg text-center" value={it.qty} onChange={e => {
+                                                const n = [...items]; n[idx].qty = e.target.value; setItems(n);
+                                            }} />
+                                        </div>
+                                    ))}
+                                    <button type="button" onClick={() => setItems([...items, {name:"", qty:""}])} className="w-full py-2 border-2 border-dashed border-emerald-100 text-emerald-600 rounded-lg font-bold">+ إضافة صنف</button>
+                                </div>
+                                <button type="submit" className="w-full py-4 btn-primary font-bold text-lg">إرسال عبر الواتساب</button>
+                            </form>
+                        </div>
+                    )}
                 </div>
             );
         }
