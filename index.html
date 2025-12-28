@@ -3,188 +3,151 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>سوق الدلالة | لتوريد السلع</title>
+    <title>سوق الدلالة | نظام التوريد</title>
     
     <script src="https://cdn.tailwindcss.com"></script>
     <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.23/jspdf.plugin.autotable.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/arabic-reshaper@1.1.0/index.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
 
-    <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;700;900&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-
+    <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;700&display=swap" rel="stylesheet">
     <style>
-        body { font-family: 'Cairo', sans-serif; background: #f8fafc; }
-        .card-supply { background: white; border-radius: 1.25rem; border: 2px solid #e2e8f0; transition: 0.3s; }
-        .card-supply:hover { border-color: #059669; box-shadow: 0 10px 25px rgba(5, 150, 105, 0.1); }
-        .nav-active { color: #059669; border-bottom: 3px solid #059669; font-weight: bold; }
-        .btn-primary { background: linear-gradient(135deg, #059669 0%, #064e3b 100%); color: white; border-radius: 0.75rem; }
+        body { font-family: 'Cairo', sans-serif; background-color: #f1f5f9; }
+        .btn-green { background: linear-gradient(135deg, #059669 0%, #064e3b 100%); color: white; }
     </style>
 </head>
 <body>
     <div id="root"></div>
 
-    <script src="Cairo-normal.js"></script>
-
     <script type="text/babel">
-        const { useState, useEffect, useCallback } = React;
-
-        const CONFIG = {
-            user: "tocontactmsg-ai", 
-            repo: "so",      
-            path: "ads",     
-            wa: "249998615193"
-        };
-
-        // دالة إصلاح اللغة العربية للـ PDF
-        const fixArabic = (text) => {
-            if (!text) return "";
-            try {
-                return arabicReshaper.reshape(text).split('').reverse().join('');
-            } catch (e) { return text; }
-        };
+        const { useState } = React;
 
         function App() {
-            const [view, setView] = useState("feed");
-            const [tenders, setTenders] = useState([]);
-            const [loading, setLoading] = useState(false);
+            const [view, setView] = useState("post");
             const [items, setItems] = useState([{ name: "", qty: "" }]);
+            const [orderInfo, setOrderInfo] = useState({ shop: "", user: "", loc: "" });
 
-            const fetchTenders = useCallback(async () => {
-                setLoading(true);
-                try {
-                    const response = await fetch(`https://api.github.com/repos/${CONFIG.user}/${CONFIG.repo}/contents/${CONFIG.path}`);
-                    const files = await response.json();
-                    const data = await Promise.all(files.filter(f => f.name.endsWith('.json')).map(async f => (await fetch(f.download_url)).json()));
-                    setTenders(data.sort((a, b) => b.id.toString().localeCompare(a.id.toString(), undefined, {numeric: true})));
-                } catch (e) { console.error(e); } finally { setLoading(false); }
-            }, []);
-
-            useEffect(() => { if (view === "feed") fetchTenders(); }, [view, fetchTenders]);
-
-            const generatePDF = (order) => {
-                try {
-                    const { jsPDF } = window.jspdf;
-                    const doc = new jsPDF();
-
-                    // استخدام متغير font من ملفك المرفوع
-                    if (typeof font !== 'undefined') {
-                        doc.addFileToVFS("Cairo.ttf", font);
-                        doc.addFont("Cairo.ttf", "Cairo", "normal");
-                        doc.setFont("Cairo");
-                    }
-
-                    doc.setFontSize(22);
-                    doc.text(fixArabic("سوق الدلالة - كشف طلبية"), 105, 20, {align:"center"});
-                    
-                    doc.setFontSize(10);
-                    doc.text(`REF: ${order.id}`, 105, 30, {align:"center"});
-                    doc.text(fixArabic(`الموقع: ${order.location || order.loc}`), 105, 36, {align:"center"});
-
-                    doc.autoTable({
-                        startY: 45,
-                        head: [[fixArabic('الكمية'), fixArabic('الصنف'), '#']],
-                        body: order.items.map((it, i) => [
-                            it.qty.toString(), 
-                            fixArabic(it.name), 
-                            i+1
-                        ]),
-                        styles: { font: "Cairo", halign: 'right' },
-                        headStyles: { fillColor: [5, 150, 105] }
-                    });
-
-                    doc.save(`Order-${order.id}.pdf`);
-                } catch (err) {
-                    alert("تأكد من وجود ملف الخط بنفس الاسم المذكور.");
-                }
-            };
-
-            const handlePost = (e) => { 
-                e.preventDefault();
-                const fd = new FormData(e.target);
-                const orderData = {
-                    shop: fd.get("shop"),
-                    user: fd.get("user"),
-                    loc: fd.get("loc"),
-                    items: items
+            // دالة تحميل الـ PDF (تحويل الشاشة إلى ملف)
+            const downloadPDF = () => {
+                const element = document.getElementById('pdf-content');
+                const opt = {
+                    margin: 10,
+                    filename: `Order-${Date.now()}.pdf`,
+                    image: { type: 'jpeg', quality: 0.98 },
+                    html2canvas: { scale: 2, useCORS: true },
+                    jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
                 };
                 
-                const itemList = items.map((it, i) => `${i+1}. ${it.name} (${it.qty})`).join('\n');
-                const message = `📦 *طلب توريد جديد*\n*المحل:* ${orderData.shop}\n*المسؤول:* ${orderData.user}\n*الموقع:* ${orderData.loc}\n----------\n*الأصناف:*\n${itemList}`;
-                
-                window.open(`https://wa.me/${CONFIG.wa}?text=${encodeURIComponent(message)}`);
-                // توليد PDF تلقائي بعد الإرسال
-                generatePDF({id: 'NEW', ...orderData});
+                // إظهار المحتوى مؤقتاً للتصوير ثم إخفاؤه
+                element.style.display = 'block';
+                html2pdf().set(opt).from(element).save().then(() => {
+                    element.style.display = 'none';
+                });
+            };
+
+            const handleWhatsApp = (e) => {
+                e.preventDefault();
+                const message = `📦 *طلب توريد جديد*\n*المحل:* ${orderInfo.shop}\n*المسؤول:* ${orderInfo.user}\n*الموقع:* ${orderInfo.loc}\n----------\n*البضاعة:*\n${items.map((it, i) => `${i+1}. ${it.name} (${it.qty})`).join('\n')}`;
+                window.open(`https://wa.me/249998615193?text=${encodeURIComponent(message)}`);
             };
 
             return (
-                <div className="max-w-xl mx-auto px-4 py-8">
-                    <header className="text-center mb-10">
-                        <h1 className="text-4xl font-black text-emerald-700">سوق الدلالة</h1>
-                        <p className="text-sm font-bold text-slate-500">منصة الموردين الموحدة</p>
+                <div className="max-w-xl mx-auto p-4 min-h-screen">
+                    <header className="text-center py-6">
+                        <h1 className="text-3xl font-bold text-emerald-800">سوق الدلالة</h1>
+                        <p className="text-gray-500">نظام توريد السلع للمحلات</p>
                     </header>
 
-                    <nav className="flex justify-center gap-10 mb-8 border-b text-lg">
-                        <button onClick={() => setView("feed")} className={`pb-4 px-2 ${view==='feed'?'nav-active':'text-slate-400'}`}>عرض الطلبات</button>
-                        <button onClick={() => setView("post")} className={`pb-4 px-2 ${view==='post'?'nav-active':'text-slate-400'}`}>إضافة طلب</button>
-                    </nav>
+                    {/* نموذج الإدخال */}
+                    <div className="bg-white p-6 rounded-2xl shadow-lg border border-gray-200">
+                        <form onSubmit={handleWhatsApp} className="space-y-4 text-right">
+                            <div>
+                                <label className="block text-sm font-bold mb-1">اسم المحل</label>
+                                <input required className="w-full p-3 bg-gray-50 border rounded-xl" 
+                                    onChange={e => setOrderInfo({...orderInfo, shop: e.target.value})} />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-bold mb-1">اسم المسؤول</label>
+                                <input required className="w-full p-3 bg-gray-50 border rounded-xl" 
+                                    onChange={e => setOrderInfo({...orderInfo, user: e.target.value})} />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-bold mb-1">الموقع (المدينة/الحي)</label>
+                                <input required className="w-full p-3 bg-gray-50 border rounded-xl" 
+                                    onChange={e => setOrderInfo({...orderInfo, loc: e.target.value})} />
+                            </div>
 
-                    {view === "feed" ? (
-                        <div className="space-y-4">
-                            {loading ? <p className="text-center py-10">جاري تحميل الطلبات...</p> : 
-                             tenders.map(order => (
-                                <div key={order.id} className="card-supply p-6">
-                                    <div className="flex justify-between items-start mb-4">
-                                        <button onClick={() => generatePDF(order)} className="bg-red-50 text-red-600 w-12 h-12 rounded-full flex items-center justify-center hover:bg-red-600 hover:text-white">
-                                            <i className="fas fa-file-pdf text-xl"></i>
-                                        </button>
-                                        <div className="text-right">
-                                            <span className="text-xs bg-slate-100 px-2 py-1 rounded">REF: {order.id}</span>
-                                            <h3 className="font-bold text-xl mt-1">{order.location}</h3>
-                                        </div>
+                            <div className="border-t pt-4">
+                                <h3 className="font-bold text-emerald-700 mb-3">قائمة الأصناف</h3>
+                                {items.map((it, idx) => (
+                                    <div key={idx} className="flex gap-2 mb-2">
+                                        <input placeholder="الصنف" className="flex-1 p-2 border rounded-lg" required
+                                            onChange={e => {
+                                                const newItems = [...items];
+                                                newItems[idx].name = e.target.value;
+                                                setItems(newItems);
+                                            }} />
+                                        <input placeholder="الكمية" className="w-24 p-2 border rounded-lg text-center" required
+                                            onChange={e => {
+                                                const newItems = [...items];
+                                                newItems[idx].qty = e.target.value;
+                                                setItems(newItems);
+                                            }} />
                                     </div>
-                                    <button onClick={() => window.open(`https://wa.me/${CONFIG.wa}?text=توفير طلب رقم ${order.id}`)} className="btn-primary w-full py-4 font-bold text-lg">توفير هذه الطلبية الآن</button>
-                                </div>
-                            ))}
-                        </div>
-                    ) : (
-                        <div className="bg-white p-8 rounded-3xl border-2 shadow-xl">
-                            <form onSubmit={handlePost} className="space-y-4 text-right">
-                                <label className="block font-bold text-slate-700">اسم المحل التجاري</label>
-                                <input required name="shop" className="w-full p-4 border rounded-2xl bg-slate-50" placeholder="مثال: بقالة الصداقة" />
-                                
-                                <label className="block font-bold text-slate-700">اسم الشخص المسؤول</label>
-                                <input required name="user" className="w-full p-4 border rounded-2xl bg-slate-50" placeholder="مثال: أحمد علي" />
-                                
-                                <label className="block font-bold text-slate-700">الموقع الجغرافي</label>
-                                <input required name="loc" className="w-full p-4 border rounded-2xl bg-slate-50" placeholder="مثال: أمدرمان - حي العرب" />
+                                ))}
+                                <button type="button" onClick={() => setItems([...items, {name: "", qty: ""}])} 
+                                    className="text-emerald-600 font-bold text-sm">+ إضافة صنف آخر</button>
+                            </div>
 
-                                <div className="pt-6 border-t mt-6">
-                                    <p className="font-bold text-emerald-700 mb-4 text-lg">الأصناف والكميات:</p>
-                                    {items.map((it, idx) => (
-                                        <div key={idx} className="flex gap-2 mb-3">
-                                            <input required placeholder="اسم الصنف" className="flex-1 p-3 border rounded-xl" value={it.name} onChange={e => {
-                                                const n = [...items]; n[idx].name = e.target.value; setItems(n);
-                                            }} />
-                                            <input required placeholder="الكمية" className="w-24 p-3 border rounded-xl text-center" value={it.qty} onChange={e => {
-                                                const n = [...items]; n[idx].qty = e.target.value; setItems(n);
-                                            }} />
-                                        </div>
-                                    ))}
-                                    <button type="button" onClick={() => setItems([...items, {name:"", qty:""}])} className="w-full py-2 border-2 border-dashed border-emerald-100 text-emerald-600 rounded-xl font-bold">+ إضافة صنف إضافي</button>
-                                </div>
-                                <button type="submit" className="w-full py-5 btn-primary font-black text-xl shadow-lg mt-4">إرسال الطلب (واتساب + PDF)</button>
-                            </form>
+                            <div className="flex gap-2 pt-4">
+                                <button type="submit" className="flex-1 py-4 btn-green rounded-xl font-bold text-lg">
+                                    <i className="fab fa-whatsapp ml-2"></i> إرسال واتساب
+                                </button>
+                                <button type="button" onClick={downloadPDF} className="w-1/3 py-4 bg-red-500 text-white rounded-xl font-bold">
+                                    <i className="fas fa-file-pdf ml-2"></i> PDF
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+
+                    {/* قالب الـ PDF المخفي (سيظهر فقط عند التحميل) */}
+                    <div id="pdf-content" style={{display: 'none', background: 'white', padding: '40px', direction: 'rtl'}}>
+                        <h1 style={{color: '#059669', textAlign: 'center', fontSize: '28px'}}>سوق الدلالة - كشف طلبية</h1>
+                        <hr style={{margin: '20px 0'}} />
+                        <div style={{marginBottom: '20px', fontSize: '18px'}}>
+                            <p><strong>المحل:</strong> {orderInfo.shop}</p>
+                            <p><strong>المسؤول:</strong> {orderInfo.user}</p>
+                            <p><strong>الموقع:</strong> {orderInfo.loc}</p>
+                            <p><strong>التاريخ:</strong> {new Date().toLocaleDateString('ar-EG')}</p>
                         </div>
-                    )}
+                        <table style={{width: '100%', borderCollapse: 'collapse', marginTop: '20px'}}>
+                            <thead>
+                                <tr style={{background: '#059669', color: 'white'}}>
+                                    <th style={{padding: '12px', border: '1px solid #ccc'}}>م</th>
+                                    <th style={{padding: '12px', border: '1px solid #ccc'}}>الصنف</th>
+                                    <th style={{padding: '12px', border: '1px solid #ccc'}}>الكمية</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {items.map((it, i) => (
+                                    <tr key={i}>
+                                        <td style={{padding: '10px', border: '1px solid #ccc', textAlign: 'center'}}>{i+1}</td>
+                                        <td style={{padding: '10px', border: '1px solid #ccc'}}>{it.name}</td>
+                                        <td style={{padding: '10px', border: '1px solid #ccc', textAlign: 'center'}}>{it.qty}</td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                        <div style={{marginTop: '40px', textAlign: 'center', color: '#888', fontSize: '12px'}}>
+                            تم إنشاء هذا المستند عبر منصة سوق الدلالة الإلكترونية
+                        </div>
+                    </div>
                 </div>
             );
         }
-        
+
         ReactDOM.createRoot(document.getElementById("root")).render(<App />);
     </script>
 </body>
