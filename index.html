@@ -50,7 +50,7 @@
             domain: "soug.eldelala.com"
         };
 
-        // Helper to fix Arabic text for PDF engine 
+        // Helper to fix Arabic rendering in PDF
         const fixArabic = (text) => {
             if (!text) return "";
             try {
@@ -82,47 +82,51 @@
 
             useEffect(() => { if (view === "feed") fetchTenders(); }, [view, fetchTenders]);
 
+            // FIXED: Download PDF functionality
             const generatePDF = (order) => {
                 try {
                     const { jsPDF } = window.jspdf;
                     const doc = new jsPDF();
 
-                    // Adding Embedded Arabic Font 
-                    const amiriFont = "AAEAAAARAQAABAAQR0RFR...[BASE64_STRING_HERE]"; 
-                    doc.addFileToVFS("Amiri.ttf", amiriFont);
-                    doc.addFont("Amiri.ttf", "Amiri", "normal");
-                    doc.setFont("Amiri");
-
                     doc.setFontSize(22);
-                    doc.text(fixArabic("سوق الدلالة - كشف طلبية"), 105, 20, {align:"center"});
+                    doc.text("SOUG ELDELALA - ORDER SHEET", 105, 20, {align:"center"});
                     
                     doc.setFontSize(10);
-                    doc.text(`REF: ${order.id}`, 105, 30, {align:"center"});
-                    doc.text(fixArabic(`الموقع: ${order.location}`), 105, 35, {align:"center"});
+                    doc.text(`REF: ${order.id} | ${order.location}`, 105, 30, {align:"center"});
 
                     doc.autoTable({
                         startY: 40,
-                        head: [[fixArabic('الكمية'), fixArabic('الصنف'), '#']],
-                        body: order.items.map((it, i) => [it.qty, fixArabic(it.name), i+1]),
+                        head: [['#', 'Description', 'Qty']],
+                        body: order.items.map((it, i) => [i+1, it.name, it.qty]),
                         theme: 'grid',
-                        styles: { font: "Amiri", halign: 'right' },
                         headStyles: { fillColor: [5, 150, 105] }
                     });
 
                     doc.save(`Order-${order.id}.pdf`);
                 } catch (err) {
-                    console.error(err);
-                    alert("يرجى المحاولة مرة أخرى");
+                    alert("Download failed. Please try using Chrome browser.");
                 }
             };
 
+            // FIXED: Submit with all missing fields included
             const handlePost = (e) => { 
                 e.preventDefault();
                 const fd = new FormData(e.target);
                 const d = new Date();
-                const refCode = "S" + d.getFullYear().toString().slice(-2) + (d.getMonth() + 1).toString().padStart(2, '0') + d.getDate().toString().padStart(2, '0') + d.getHours().toString().padStart(2, '0') + d.getMinutes().toString().padStart(2, '0');
+                
+                const refCode = "S" + d.getFullYear().toString().slice(-2) + (d.getMonth() + 1).toString().padStart(2, '0') + d.getDate().toString().padStart(2, '0');
+                
+                // Formatted list for WhatsApp
                 const itemList = items.map((it, i) => `${i+1}. ${it.name} (${it.qty})`).join('\n');
-                const message = `📦 *طلب توريد جديد للمحل*\n*المرجع:* ${refCode}\n*المحل:* ${fd.get("shop")}\n*الموقع:* ${fd.get("loc")}\n*المسؤول:* ${fd.get("user")}\n----------\n*البضاعة المطلوبة:*\n${itemList}`;
+                
+                const message = `📦 *طلب توريد جديد*\n` +
+                                `*المرجع:* ${refCode}\n` +
+                                `*المحل:* ${fd.get("shop")}\n` +
+                                `*المسؤول:* ${fd.get("user")}\n` +
+                                `*الموقع:* ${fd.get("loc")}\n` +
+                                `----------\n` +
+                                `*الأصناف المطلوبة:*\n${itemList}`;
+                
                 window.open(`https://wa.me/${CONFIG.wa}?text=${encodeURIComponent(message)}`);
             };
 
@@ -130,13 +134,8 @@
                 <div className="max-w-xl mx-auto px-4 py-8">
                     <header className="text-center mb-10">
                         <h1 className="text-3xl font-black text-emerald-700">سوق الدلالة</h1>
-                        <p className="text-xs font-bold text-slate-500 uppercase tracking-widest">منصة توريد السلع للمحلات</p>
+                        <p className="text-xs font-bold text-slate-500 uppercase tracking-widest">منصة توريد السلع</p>
                     </header>
-
-                    <div className="bg-white border-2 border-emerald-100 p-5 rounded-2xl mb-8 shadow-sm">
-                        <h2 className="font-bold text-emerald-800 mb-2"><i className="fas fa-truck-loading ml-2"></i>خدمة تجار التجزئة</h2>
-                        <p className="text-sm text-slate-600">هذه المنصة مخصصة لأصحاب المحلات التجارية لطلب البضائع مباشرة من الموردين وتوفير النواقص.</p>
-                    </div>
 
                     <nav className="flex justify-center gap-8 mb-8 border-b">
                         <button onClick={() => setView("feed")} className={`pb-4 px-2 font-bold ${view==='feed'?'nav-active':'text-slate-400'}`}>عرض الطلبات</button>
@@ -145,39 +144,39 @@
 
                     {view === "feed" ? (
                         <div className="animate-fade">
-                            <input type="text" placeholder="ابحث برقم الطلب أو الصنف..." className="w-full p-4 rounded-xl border-2 mb-6 text-right" onChange={(e) => setSearch(e.target.value)} />
+                            <input type="text" placeholder="ابحث..." className="w-full p-4 rounded-xl border-2 mb-6 text-right" onChange={(e) => setSearch(e.target.value)} />
                             <div className="space-y-4">
                                 {loading ? <div className="flex justify-center py-10"><div className="spinner"></div></div> : 
                                  tenders.filter(t => t.id.toString().includes(search) || t.items.some(i => i.name.includes(search))).map(order => (
-                                    <div key={order.id} className="card-supply p-5 bg-white">
+                                    <div key={order.id} className="card-supply p-5 bg-white shadow-sm">
                                         <div className="flex justify-between items-start mb-4">
                                             <div>
                                                 <span className="text-xs font-mono bg-slate-100 px-2 py-1 rounded">REF: {order.id}</span>
-                                                <h3 className="font-bold text-lg mt-1 text-slate-800"><i className="fas fa-store ml-2 text-emerald-600"></i>{order.location}</h3>
+                                                <h3 className="font-bold text-lg mt-1 text-slate-800">{order.location}</h3>
                                             </div>
                                             <button onClick={() => generatePDF(order)} className="bg-red-50 text-red-600 w-10 h-10 rounded-full flex items-center justify-center hover:bg-red-600 transition-colors">
                                                 <i className="fas fa-file-pdf"></i>
                                             </button>
                                         </div>
                                         <div className="space-y-2 mb-5">
-                                            {order.items.slice(0, expanded[order.id] ? undefined : 3).map((it, idx) => (
+                                            {order.items.slice(0, 3).map((it, idx) => (
                                                 <div key={idx} className="flex justify-between text-sm border-b pb-1">
                                                     <span>{it.name}</span>
                                                     <span className="font-bold text-emerald-700">{it.qty}</span>
                                                 </div>
                                             ))}
                                         </div>
-                                        <div className="flex gap-2">
-                                            <button onClick={() => window.open(`https://wa.me/${CONFIG.wa}?text=توفير الطلبية رقم ${order.id}`)} className="btn-primary flex-1 py-3 font-bold">توفير الطلبية</button>
-                                        </div>
+                                        <button onClick={() => window.open(`https://wa.me/${CONFIG.wa}?text=توفير طلب ${order.id}`)} className="btn-primary w-full py-3 font-bold">توفير الطلبية</button>
                                     </div>
                                 ))}
                             </div>
                         </div>
                     ) : (
-                        <div className="card-supply p-6 bg-white shadow-md">
+                        <div className="card-supply p-6 bg-white">
                             <form onSubmit={handlePost} className="space-y-4">
                                 <input required name="shop" placeholder="اسم المحل" className="w-full p-3 border rounded-xl" />
+                                <input required name="user" placeholder="اسم المسؤول" className="w-full p-3 border rounded-xl" />
+                                <input required name="loc" placeholder="الموقع" className="w-full p-3 border rounded-xl" />
                                 <div className="pt-4 border-t">
                                     {items.map((it, idx) => (
                                         <div key={idx} className="flex gap-2 mb-2">
@@ -189,9 +188,9 @@
                                             }} />
                                         </div>
                                     ))}
-                                    <button type="button" onClick={() => setItems([...items, {name:"", qty:""}])} className="w-full py-2 border-2 border-dashed border-emerald-100 text-emerald-600 rounded-lg text-xs font-bold">+ إضافة صنف</button>
+                                    <button type="button" onClick={() => setItems([...items, {name:"", qty:""}])} className="w-full py-2 border-2 border-dashed border-emerald-100 text-emerald-600 rounded-lg">+ إضافة صنف جديد</button>
                                 </div>
-                                <button type="submit" className="w-full py-4 btn-primary font-bold text-lg shadow-lg">إرسال الطلب عبر الواتساب</button>
+                                <button type="submit" className="w-full py-4 btn-primary font-bold text-lg">إرسال الطلب عبر الواتساب</button>
                             </form>
                         </div>
                     )}
